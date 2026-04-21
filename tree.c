@@ -15,6 +15,7 @@
 #include <string.h>
 #include <dirent.h>
 #include <sys/stat.h>
+#include "index.h"
 
 // ─── Mode Constants ─────────────────────────────────────────────────────────
 
@@ -130,8 +131,36 @@ int tree_serialize(const Tree *tree, void **data_out, size_t *len_out) {
 //
 // Returns 0 on success, -1 on error.
 int tree_from_index(ObjectID *id_out) {
-    // TODO: Implement recursive tree building
-    // (See Lab Appendix for logical steps)
-    (void)id_out;
-    return -1;
+
+    Index index;
+    index_load(&index);
+
+    size_t buf_size = 0;
+    unsigned char *buf = NULL;
+
+    for (size_t i = 0; i < index.count; i++) {
+        IndexEntry *e = &index.entries[i];
+
+        // For now, include ALL entries (flat handling)
+	char *name = strrchr(e->path, '/');
+	if (name) name++;   // take only filename
+	else name = e->path;
+
+        char header[256];
+        int hlen = snprintf(header, sizeof(header),
+                            "%o %s", e->mode, name) + 1;
+
+        unsigned char *bin_hash = e->hash.hash;
+
+        buf = realloc(buf, buf_size + hlen + 20);
+        memcpy(buf + buf_size, header, hlen);
+        memcpy(buf + buf_size + hlen, bin_hash, 20);
+        buf_size += hlen + 20;
+    }
+
+    int rc = object_write(OBJ_TREE, buf, buf_size, id_out);
+
+    free(buf);
+    return rc;
 }
+
